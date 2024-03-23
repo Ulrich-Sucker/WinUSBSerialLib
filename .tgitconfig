@@ -1,0 +1,4 @@
+[hook "precommit"]
+	cmdline = C:\\Utilities\\git-pre-commit-job.cmd
+	wait = true
+	show = true

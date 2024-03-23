@@ -3,6 +3,9 @@
 // 	File Name:
 //	Author:		Ulrich Sucker      
 // -------------------------------------------------------------------------------------
+// 	Version 01.05 - 2024-03-23
+//   - Erkennung und Behandlung falscher Werte für Baudrate und COM-Port verbessert
+// -------------------------------------------------------------------------------------
 // 	Version 01.04 - 2024-03-19
 //   - Aus einer COM-Port-Nummer wird ein korrekter COM-Port-String generiert
 // -------------------------------------------------------------------------------------
@@ -12,7 +15,7 @@
 // 	Version 00.00 - 2024-02-27
 //   - Base
 // -------------------------------------------------------------------------------------
-#define WinUSBSerialLib_cpp_Version "01.04.009"
+#define WinUSBSerialLib_cpp_Version "01.04.010"
 // =====================================================================================
 #pragma endregion
 
@@ -21,6 +24,7 @@
 #include <windows.h>
 #include <iostream>
 #include <string>
+#include <regex>
 
 #include "WinUSBSerialLib.hpp"
 
@@ -34,16 +38,16 @@
   INPUT:    
   1.	std::string& portName 
             
-  2.	std::string& baudRate
+  2.	std::string& BaudRate
   
   OUTPUT:   
 		HANDLE 
   -------------------------------------------------------------------------------------- */     
-SerialPort::SerialPort(std::string& portNameSting, std::string& baudRate) 
+SerialPort::SerialPort(std::string& portNameSting, std::string& BaudRate) 
 {
     this->connected = false;
     char* PortNameChar = portNameSting.data();
-    int intBaudRate = stoi(baudRate);
+    int intBaudRate = stoi(BaudRate);
 
     // Create & open COM I/O device. This returns a handle to the COM device
     this->handler = CreateFileA(static_cast<LPCSTR>(PortNameChar),
@@ -111,12 +115,6 @@ SerialPort::~SerialPort() {
 
 
 /* ==== SerialPort::readSerialPort =====================================================
-  Reading bytes from serial port to buffer;
-	returns read bytes count, or if error occurs, returns 0
-	toRead: toRead ist immer kleiner oder gleich Buffer Laenge
-	- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
-  FUNCTION:  SerialPort::readSerialPort
-  
   DESCRIPTION:  
   Die Funktion holt beim Betriebssytem die über den COM-Port emfangenen Zeichen und 
   füllte den beim Aufruf übergebenen lokalen Buffer mit den empfangenen Zeichen.
@@ -131,7 +129,7 @@ SerialPort::~SerialPort() {
   
   INPUT:    
   1. const char* buffer    Buffer, der vom Aufrufenden Programm bereit gestellt
-                                  werden muss.
+                           werden muss.
   2. unsigned int buf_size Laenge des Buffers.
   
   OUTPUT:   
@@ -307,19 +305,26 @@ bool SerialPort::writeSerialPort(std::string payload) {
 
 
 /* ==== readCOMPortName ================================================================
-  FUNCTION:		readCOMPortName
-  
   DESCRIPTION:  
+  Ziel der Funktion ist es einen geprüften COM-Port-String zurück zu liefern.
+  Dazu überprüft die Funktion einen übergebenen String oder liest einen String von der
+  Console ein.
+  Weiterhin kann sie einen Eingabe- oder Hilfstext ausgeben.
   
-  INPUT:    
+  INPUT:
+  1. std::string& PortName	Eine Zahl größer als 0
+  2. std::string HelpMsg	Ein (HIlfs-) Text, der die Eingabe erleichtern soll
   
-  OUTPUT:   
+  OUTPUT:
+  PortName COM3 oder \\.\COM12
+  True   wenn ein korrekter Wert übergeben oder eingelsen wurde
+  False  sonst
 
   -------------------------------------------------------------------------------------- */
-  bool readCOMPortName( std::string& PortName, std::string HelpMsg = "COM Port:\t")
+  bool readCOMPortName( std::string& PortName, std::string HelpMsg = "COM Port:\t" )
 {
-    /* ---- COM-Port-Nr einlesen, wenn kein Wert  uebergeben wurde --------------------- */
-	if (PortName.length() == 0)
+    /* ---- COM-Port-Nr einlesen, wenn keine Zahl uebergeben wurde oder Zahl = 0 ------- */
+	if (( (PortName.length() == 0) || (!std::regex_match (PortName, std::regex("\\d*"))) ) || (PortName == "0"))
 	{
 		std::string inputStr;
 		std::cout << HelpMsg;
@@ -327,54 +332,64 @@ bool SerialPort::writeSerialPort(std::string payload) {
 
         PortName = inputStr;
 	}
-    /* ---- Port Nr Pruefen ------------------------------------------------------------ */
-    unsigned int PortNr = stoi(PortName);
-
-    if (PortNr == 0) 
+    /* ---- Port Nr Pruefen ob Zahl > 0 ------------------------------------------------ */
+    if (std::regex_match (PortName, std::regex("\\d*") ))
     {
-        return 1;
-    }
-    else if (( 0 < PortNr ) && ( PortNr < 10 ))
-    {
-        PortName = "COM" + PortName;
-
+        // ---- Input ist Zahl --------------------------
+        unsigned int PortNr = stoi(PortName);
+        if ( PortNr == 0 ) 
+        {
+            return false; // Es gibt keinen Port 0
+        }
+        else if (( 0 < PortNr ) && ( PortNr < 10 ))
+        {
+            PortName = "COM" + PortName;
+        } else {
+            PortName = "\\\\.\\COM" + PortName;
+        }
+        return true;
     }
     else 
     {
-        PortName = "\\\\.\\COM" + PortName;
+        PortName = "";
+        return false;        // Input ist keine Zahl
     }
-	return true;
 } // ---- readCOMPortName --------------------------------------------------------------
 
 /* ==== readBaudRate ===================================================================
-  FUNCTION:		readBaudRate
-  
   DESCRIPTION:  
+  Ziel der Funktion ist es, eine geprüfte Baudrate zurück zu geben
   
-  INPUT:    
+  INPUT:
+  1. std::string& BaudRate	Eine valide Baudrate 9600, 19200, ...
+  2. std::string HelpMsg	Ein (HIlfs-) Text, der die Eingabe erleichtern soll   
   
-  OUTPUT:   
+  OUTPUT:
+  PortName 9600
+  True   wenn ein korrekter Wert übergeben oder eingelsen wurde
+  False  sonst   
 
   -------------------------------------------------------------------------------------- */ 
-bool readBaudRate( std::string& baudRate, std::string HelpMsg = "Baud Rate:\t")
+bool readBaudRate( std::string& BaudRate, std::string HelpMsg = "Baud Rate:\t")
 {
-  /* ---- Liste erlaubert Baudraten ---------------------------------------------------- */
+    /* ---- Liste erlaubert Baudraten -------------------------------------------------- */
 	std::string BaudRates[] = {"9600", "19200", "57600", "115200"};
 
-  /* ---- Baudrate einlesen, wenn keine Baudrate uebergeben wurde ---------------------- */
-	if (baudRate.length() == 0)
+    /* ---- Baudrate einlesen, wenn keine Zahl uebergeben wurde ------------------------ */
+	if ((BaudRate.length() == 0) || (!std::regex_match (BaudRate, std::regex("\\d+") )))
 	{
 		std::cout << HelpMsg;
-		std::cin >> baudRate;
+		std::cin >> BaudRate;
 	}
 
-  /* ---- Pruefen, ob korrekte Baudrate uebergeben wurde ------------------------------- */
-	for (int i = 0; i < BaudRates->length(); i ++)
+    /* ---- Pruefen, ob korrekte Baudrate uebergeben wurde ----------------------------- */
+    for (int i = 0; i < BaudRates->length(); i ++)
 	{
-		if (BaudRates[i] == baudRate)
+		if (BaudRates[i] == BaudRate)
 		{
 			return true;  // Eingegebene Baudrate findet sich in Liste erlaubter Baudraten
 		}
 	}
+	BaudRate = "";
 	return false;
 } // ---- readBaudRate -----------------------------------------------------------------
