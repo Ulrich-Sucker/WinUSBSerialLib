@@ -15,11 +15,9 @@
 // 	Version 00.00 - 2024-02-27
 //   - Base
 // -------------------------------------------------------------------------------------
-#define WinUSBSerialLib_cpp_Version "01.04.010"
+#define WinUSBSerialLib_cpp_Version "01.04.011"
 // =====================================================================================
 #pragma endregion
-
-#pragma once
 
 #include <windows.h>
 #include <iostream>
